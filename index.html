@@ -1,40 +1,155 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DeckBar Fidelidade</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8" />
+  <title>Deck Bar Fidelidade</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css" />
+  <!-- Leitor de QR (cdn) -->
+  <script src="https://unpkg.com/html5-qrcode" defer></script>
+  <script src="./script.js" defer></script>
 </head>
 <body>
-  <div class="container">
-    <img src="assets/logo.png" alt="DeckBar Logo" id="logo" />
-    <div id="login-area" class="card hidden">
-      <h2>Área Administrativa</h2>
-      <input type="text" id="username" placeholder="Usuário" />
-      <input type="password" id="password" placeholder="Senha" />
-      <button onclick="login()">Entrar</button>
-      <button onclick="logout()" id="logout" class="hidden">Sair</button>
-    </div>
+  <div class="bg">
+    <!-- Cabeçalho / Logo -->
+    <header class="header">
+      <img id="logo" src="./logo.png" alt="Deck Bar" class="logo" />
+      <h1 class="app-title">DECK BAR</h1>
+      <p class="app-sub">Aqui quem é de casa ganha mais</p>
+    </header>
 
-    <div id="main-area" class="card">
-      <h2>Cliente</h2>
-      <label>Digite seu CPF:</label>
-      <input type="text" id="cpf" placeholder="000.000.000-00" />
-      <button onclick="verificarPontos()">Verificar Pontos</button>
-      <div id="pontos-area"></div>
-    </div>
+    <main class="container">
+      <!-- Card: Verificar CPF / Cadastro -->
+      <section id="card-cpf" class="card">
+        <h2 class="card-title">Verifique seus pontos</h2>
+        <label class="label" for="cpf">Digite seu CPF</label>
+        <input id="cpf" class="input" placeholder="000.000.000-00" inputmode="numeric" />
+        <button id="btn-check" class="btn">Verificar Pontos</button>
+        <p id="cpf-msg" class="msg"></p>
 
-    <div id="admin-area" class="card hidden">
-      <h2>Painel Admin</h2>
-      <label>Nº do pedido:</label>
-      <input type="text" id="orderNo" />
-      <label>Valor pago:</label>
-      <input type="number" id="amount" />
-      <button onclick="gerarQRCode()">Gerar QRCode</button>
-      <div id="qr-result"></div>
-    </div>
+        <div id="register-area" class="hidden">
+          <div class="divider"></div>
+          <label class="label" for="name">Nome</label>
+          <input id="name" class="input" placeholder="Seu nome completo" />
+          <button id="btn-register" class="btn">Cadastrar</button>
+        </div>
+      </section>
+
+      <!-- Card: Resumo do Cliente -->
+      <section id="card-summary" class="card hidden">
+        <h2 id="hello" class="card-title">Olá</h2>
+        <div class="kpis">
+          <div class="kpi">
+            <div class="kpi-label">Visitas</div>
+            <div id="kpi-visits" class="kpi-value">0</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Pontos extras</div>
+            <div id="kpi-extra" class="kpi-value">0,00</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Total</div>
+            <div id="kpi-total" class="kpi-value">0,00</div>
+          </div>
+        </div>
+
+        <div id="milestone" class="milestone hidden">
+          <img id="milestone-img" alt="Parabéns" />
+        </div>
+
+        <div class="scan-area">
+          <button id="btn-scan" class="btn">Ler QR Code</button>
+          <div id="qr-reader" class="qr hidden"></div>
+        </div>
+
+        <h3 class="history-title">Histórico de Visitas</h3>
+        <ul id="history" class="history-list"></ul>
+      </section>
+
+      <!-- Modal Admin (aparece após 5 cliques na logo) -->
+      <dialog id="admin-dialog" class="dialog">
+        <form method="dialog" class="card dialog-card">
+          <div class="dialog-header">
+            <h2 class="card-title">Painel do Administrador</h2>
+            <button class="icon-btn" aria-label="Fechar" onclick="window.ui.closeAdmin()">✕</button>
+          </div>
+
+          <div id="admin-login">
+            <label class="label">Usuário</label>
+            <input id="admin-user" class="input" placeholder="seomar" />
+            <label class="label">Senha</label>
+            <input id="admin-pass" class="input" type="password" placeholder="160590" />
+            <button id="btn-admin-login" class="btn" type="button">Entrar</button>
+            <p id="admin-msg" class="msg"></p>
+          </div>
+
+          <div id="admin-app" class="hidden">
+            <div class="tabs">
+              <button id="tab-qr" class="tab active" type="button">Gerar QRCode</button>
+              <button id="tab-reports" class="tab" type="button">Conferir pontos</button>
+              <button id="btn-logout" class="tab danger" type="button">Sair</button>
+            </div>
+
+            <!-- Aba: Gerar QR -->
+            <div id="pane-qr" class="pane">
+              <div class="grid">
+                <div>
+                  <label class="label">Nº do pedido</label>
+                  <input id="order-no" class="input" placeholder="13465" />
+                </div>
+                <div>
+                  <label class="label">Valor pago (R$)</label>
+                  <input id="amount-paid" class="input" placeholder="25,14" />
+                </div>
+              </div>
+              <div class="row mt-12">
+                <button id="btn-generate" class="btn" type="button">Gerar QRCode</button>
+                <button id="btn-invalidate" class="btn outline" type="button">Invalidar</button>
+              </div>
+
+              <div id="qr-output" class="qr-output hidden">
+                <div class="qr-meta">
+                  <div><strong>Token:</strong> <span id="qr-token" class="mono"></span></div>
+                  <div><strong>Expira em:</strong> <span id="qr-countdown">–</span>s</div>
+                </div>
+                <img id="qr-img" class="qr-img" alt="QRCode" />
+              </div>
+              <p id="qr-msg" class="msg"></p>
+            </div>
+
+            <!-- Aba: Relatórios -->
+            <div id="pane-reports" class="pane hidden">
+              <div class="row">
+                <button id="btn-refresh" class="btn" type="button">Atualizar</button>
+              </div>
+
+              <h3 class="section-title">Clientes</h3>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr>
+                    <th>Nome</th><th>CPF</th><th>Visitas</th><th>Pontos extras</th><th>Total</th><th>Gasto total</th>
+                  </tr></thead>
+                  <tbody id="tbl-customers"></tbody>
+                </table>
+              </div>
+
+              <h3 class="section-title mt-24">Transações</h3>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr>
+                    <th>Data/Hora</th><th>Nome</th><th>CPF</th><th>Pedido</th><th>Valor pago</th><th>Pontos</th><th>Extras</th>
+                  </tr></thead>
+                  <tbody id="tbl-transactions"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </form>
+      </dialog>
+    </main>
   </div>
-  <script src="script.js"></script>
 </body>
 </html>
