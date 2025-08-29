@@ -1,107 +1,56 @@
-const $ = sel => document.querySelector(sel);
-const API_URL = document.querySelector('meta[name="api-url"]').content || '';
-function toast(msg, ms=1800){ const el=$("#toast"); el.textContent=msg; el.classList.remove('hidden'); setTimeout(()=>el.classList.add('hidden'),ms); }
-async function api(path, opts={}, needAuth=false){
-  const h = {'Content-Type':'application/json', ...(opts.headers||{})};
-  if(needAuth){ const t = localStorage.getItem('adminToken'); if(t) h['Authorization']='Bearer '+t; }
-  const r = await fetch(API_URL+path, {...opts, headers:h});
-  const txt = await r.text();
-  if(!r.ok) throw new Error(txt || r.statusText);
-  try { return JSON.parse(txt); } catch { return txt; }
+let clickCount = 0;
+let loggedIn = false;
+
+document.getElementById("logo").addEventListener("click", () => {
+  clickCount++;
+  if (clickCount >= 5) {
+    document.getElementById("login-area").classList.remove("hidden");
+    clickCount = 0;
+  }
+});
+
+function login() {
+  const user = document.getElementById("username").value;
+  const pass = document.getElementById("password").value;
+  if (user === "seomar" && pass === "160590") {
+    loggedIn = true;
+    document.getElementById("admin-area").classList.remove("hidden");
+    document.getElementById("logout").classList.remove("hidden");
+    alert("Login realizado com sucesso!");
+  } else {
+    alert("Usuário ou senha incorretos.");
+  }
 }
-const viewStart = $("#cliente-card");
-const viewHome  = $("#home-card");
-const viewAdmin = $("#admin-card");
-function show(v){ [viewStart,viewHome,viewAdmin].forEach(x=>x.classList.add('hidden')); v.classList.remove('hidden'); }
-let tapCount=0, tapTimer=null;
-$("#logo").addEventListener('click',()=>{
-  tapCount++; if(tapTimer) clearTimeout(tapTimer);
-  tapTimer=setTimeout(()=>tapCount=0,1500);
-  if(tapCount>=5){ tapCount=0; show(viewAdmin); $("#btn-admin-sair").classList.toggle('hidden', !localStorage.getItem('adminToken')); }
-});
-$("#btn-verificar").addEventListener('click', async ()=>{
-  const cpf = $("#cpf").value.trim();
-  if(!cpf){ toast("Informe o CPF"); return; }
-  try{
-    const lookup = await api('/api/clients/lookup',{method:'POST', body:JSON.stringify({cpf})});
-    if(lookup.exists){
-      localStorage.setItem('cpf', cpf);
-      await carregarHome(cpf);
-      show(viewHome);
-    }else{
-      if(confirm("CPF incorreto ou não cadastrado.\nDeseja cadastrar?")){
-        await api('/api/clients/register',{method:'POST', body:JSON.stringify({cpf, nome:"Cliente"})});
-        localStorage.setItem('cpf', cpf);
-        await carregarHome(cpf);
-        show(viewHome);
-      }
-    }
-  }catch(e){ toast("Erro: "+e.message); }
-});
-async function carregarHome(cpf){
-  const r = await api('/api/clients/summary',{method:'POST', body:JSON.stringify({cpf})});
-  $("#hello-nome").textContent = `Olá, ${r.nome}!`;
-  $("#pontos").textContent = r.pontos;
-  $("#total-visitas").textContent = r.pontos;
-  const list = $("#lista-historico"); list.innerHTML="";
-  (r.historico||[]).forEach(h=>{
-    const div = document.createElement('div');
-    const dt = new Date(h.data);
-    div.className='row';
-    div.innerHTML = `<span><b>${dt.toLocaleDateString()}</b> | Pedido #${h.pedido}</span>`;
-    list.appendChild(div);
-  });
-  document.getElementById('premio').classList.toggle('hidden', (r.pontos%5)!==0 || r.pontos===0);
+
+function logout() {
+  loggedIn = false;
+  document.getElementById("admin-area").classList.add("hidden");
+  document.getElementById("logout").classList.add("hidden");
+  document.getElementById("username").value = "";
+  document.getElementById("password").value = "";
 }
-$("#btn-lerqr").addEventListener('click', async ()=>{
-  const t = prompt('Cole aqui o token "t" da URL do QR');
-  if(!t) return;
-  const cpf = localStorage.getItem('cpf');
-  try{
-    await api(`/api/qr/scan?t=${encodeURIComponent(t)}`,{method:'POST', body:JSON.stringify({cpf})});
-    toast("Ponto computado!");
-    await carregarHome(cpf);
-  }catch(e){ toast("Erro: "+e.message); }
-});
-$("#btn-admin-login").addEventListener('click', async ()=>{
-  const user = $("#admin-user").value.trim();
-  const pass = $("#admin-pass").value.trim();
-  try{
-    const r = await api('/api/admin/login',{method:'POST', body:JSON.stringify({user,pass})});
-    localStorage.setItem('adminToken', r.token);
-    $("#btn-admin-sair").classList.remove('hidden');
-    toast("Admin OK");
-  }catch(e){ toast("Login inválido"); }
-});
-$("#btn-admin-sair").addEventListener('click', ()=>{
-  localStorage.removeItem('adminToken');
-  $("#btn-admin-sair").classList.add('hidden');
-  toast("Saiu do admin");
-});
-$("#btn-gerar").addEventListener('click', async ()=>{
-  const orderNo = $("#order-no").value.trim();
-  const amount = parseFloat($("#amount").value.trim().replace(',','.'));
-  if(!orderNo || !amount){ toast("Informe pedido e valor"); return; }
-  try{
-    const r = await api('/api/qr/generate',{method:'POST', body:JSON.stringify({orderNo, amount})}, true);
-    $("#qr-output").innerHTML = `<p><b>URL:</b> ${r.url}</p><p><b>Expira:</b> ${new Date(r.expiresAt).toLocaleTimeString()}</p>`;
-  }catch(e){ toast("Erro: "+e.message); }
-});
-$("#btn-conferir").addEventListener('click', async ()=>{
-  try{
-    const r = await api('/api/admin/points',{}, true);
-    const el = $("#tabela-admin");
-    const rows = (r.items||[]).map(i=>`
-      <tr>
-        <td>${i.nome||''}</td>
-        <td>${i.cpf||''}</td>
-        <td>${i.pontos||0}</td>
-        <td>${i.pedido||''}</td>
-        <td>${Number(i.valor||0).toFixed(2)}</td>
-        <td>${new Date(i.data).toLocaleString()}</td>
-      </tr>`).join('');
-    el.innerHTML = `<div class="table"><table>
-      <thead><tr><th>Nome</th><th>CPF</th><th>Pontos</th><th>Pedido</th><th>Valor</th><th>Data/Hora</th></tr></thead>
-      <tbody>${rows}</tbody></table></div>`;
-  }catch(e){ toast("Erro: "+e.message); }
-});
+
+function verificarPontos() {
+  const cpf = document.getElementById("cpf").value;
+  const pontosArea = document.getElementById("pontos-area");
+  pontosArea.innerHTML = `<p>CPF: ${cpf}</p><p>Pontos: 12</p>`;
+
+  if (12 >= 15) {
+    pontosArea.innerHTML += '<img src="assets/15pontos.jpg" alt="Prêmio 15 pontos">';
+  } else if (12 >= 10) {
+    pontosArea.innerHTML += '<img src="assets/10pontos.jpg" alt="Prêmio 10 pontos">';
+  } else if (12 >= 5) {
+    pontosArea.innerHTML += '<img src="assets/5pontos.jpg" alt="Prêmio 5 pontos">';
+  }
+}
+
+function gerarQRCode() {
+  if (!loggedIn) {
+    alert("Acesso negado.");
+    return;
+  }
+  const orderNo = document.getElementById("orderNo").value;
+  const amount = document.getElementById("amount").value;
+  const qrResult = document.getElementById("qr-result");
+  qrResult.innerHTML = `<p>QR gerado para Pedido ${orderNo}, valor R$${amount}</p>`;
+}
