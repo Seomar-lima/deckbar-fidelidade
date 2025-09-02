@@ -2,19 +2,13 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
     <title>Deck Bar — Fidelidade</title>
     <link rel="stylesheet" href="./style.css" />
-    <!-- Fonte básica; pode trocar depois -->
+    <script>window.DECKBAR_API_URL = "https://SEU-BACKEND.vercel.app/api";</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
   </head>
   <body>
     <header class="app-header">
@@ -26,77 +20,48 @@
     </header>
 
     <main class="container">
-      <!-- Card: Pontos (mock simples nessa fase) -->
       <section class="card">
         <h2>Seus pontos</h2>
         <div class="points-row">
           <span id="points-value">0</span>
           <button id="btn-add-point" class="btn btn-outline">+1 (teste)</button>
         </div>
-        <p class="muted">
-          *Nesta etapa eram apenas pontos locais (mock) para teste visual.
-        </p>
+        <p class="muted">*Mock local para testes visuais.</p>
       </section>
 
-      <!-- Card: Gerar QR (VISÍVEL mesmo sem login, nesta fase) -->
-      <section class="card">
+      <section class="card" id="qr-card">
         <h2>Gerar QR Code</h2>
+        <p class="muted" id="qr-hint">Disponível apenas para Super Admin (abra o login com 7 toques na logo).</p>
         <div class="form-grid">
-          <label>
-            Nº do pedido
-            <input id="orderNo" type="text" placeholder="ex.: 000123" />
+          <label>Nº do pedido
+            <input id="orderNo" type="text" placeholder="ex.: 000123" disabled />
           </label>
-          <label>
-            Valor pago (R$)
-            <input id="amountPaid" type="number" min="0" step="0.01" placeholder="0,00" />
+          <label>Valor pago (R$)
+            <input id="amountPaid" type="number" min="0" step="0.01" placeholder="0,00" disabled />
           </label>
         </div>
-        <button id="btn-generate" class="btn">Gerar QR</button>
-
-        <div id="qr-result" class="qr-wrap">
-          <!-- Resultado do QR aparece aqui -->
-        </div>
-
-        <p class="muted">
-          *Nesta versão o QR era gerado no front apenas com os dados digitados.
-        </p>
-      </section>
-
-      <!-- Card: Admin (apenas um placeholder visível depois do login) -->
-      <section id="admin-panel" class="card hidden">
-        <h2>Admin</h2>
-        <p class="muted">Acesso concedido. Aqui entram as ações do admin.</p>
-        <div class="admin-actions">
-          <button class="btn btn-outline" id="btn-logout">Sair</button>
-        </div>
+        <button id="btn-generate" class="btn" disabled>Gerar QR</button>
+        <div id="qr-result" class="qr-wrap"></div>
       </section>
     </main>
 
-    <!-- Modal de Login (aberto por 5 cliques na logo) -->
-    <dialog id="admin-modal" class="modal">
-      <form method="dialog" class="modal-card" id="admin-form" novalidate>
-        <h3>Login Admin</h3>
-        <label>
-          Usuário
-          <!-- PRÉ-PREENCHIDO NESTA FASE (depois foi removido) -->
-          <input id="admin-user" type="text" value="seomar" autocomplete="username" />
+    <dialog id="super-modal" class="modal">
+      <form method="dialog" class="modal-card" id="super-form" novalidate>
+        <h3>Login Super Admin</h3>
+        <label>Usuário
+          <input id="super-user" type="text" placeholder="usuário" autocomplete="username" />
         </label>
-        <label>
-          Senha
-          <!-- PRÉ-PREENCHIDO NESTA FASE (depois foi removido) -->
-          <input id="admin-pass" type="password" value="160590" autocomplete="current-password" />
+        <label>Senha
+          <input id="super-pass" type="password" placeholder="senha" autocomplete="current-password" />
         </label>
         <div class="row">
-          <button class="btn" id="btn-admin-login">Entrar</button>
+          <button class="btn" id="btn-super-login">Entrar</button>
           <button class="btn btn-outline" value="cancel">Cancelar</button>
         </div>
-        <p class="muted">
-          *Abertura deste modal: 5 cliques rápidos na logo.
-        </p>
+        <p class="muted">*Abra este modal tocando <b>7 vezes</b> na logo.</p>
       </form>
     </dialog>
 
-    <!-- Lib simples pra QR no front (fase de protótipo) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
             integrity="sha512-M6ar0x9fT2YtB2p+uSAr9F5i7pQnQWZcYk3k9TQbF3NQ5c8o8wB0Y7xL1nO9fQF7oUuJb0VYgQf1wX1N3Ua6LQ=="
             crossorigin="anonymous" referrerpolicy="no-referrer"></script>

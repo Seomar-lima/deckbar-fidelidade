@@ -1,14 +1,14 @@
-// ===== Estado simples local (fase pré-ajustes) =====
+const API = window.DECKBAR_API_URL || "";
+const $ = (s) => document.querySelector(s);
+
 const state = {
   points: Number(localStorage.getItem("points") || 0),
-  isAdmin: localStorage.getItem("isAdmin") === "true",
+  token: localStorage.getItem("super_token") || null,
+  role: localStorage.getItem("super_role") || null,
   logoClicks: 0,
   lastClickAt: 0
 };
 
-const $ = (sel) => document.querySelector(sel);
-
-// ===== UI Elements =====
 const pointsValue = $("#points-value");
 const btnAddPoint = $("#btn-add-point");
 
@@ -16,102 +16,93 @@ const orderNo = $("#orderNo");
 const amountPaid = $("#amountPaid");
 const btnGenerate = $("#btn-generate");
 const qrWrap = $("#qr-result");
+const qrHint = $("#qr-hint");
 
-const adminPanel = $("#admin-panel");
-const adminModal = $("#admin-modal");
-const btnAdminLogin = $("#btn-admin-login");
-const btnLogout = $("#btn-logout");
-
-const adminUser = $("#admin-user");
-const adminPass = $("#admin-pass");
 const logo = $("#logo");
+const superModal = $("#super-modal");
+const superUser = $("#super-user");
+const superPass = $("#super-pass");
+const btnSuperLogin = $("#btn-super-login");
 
-// ===== Init =====
 function refreshUI(){
   pointsValue.textContent = state.points;
 
-  if (state.isAdmin){
-    adminPanel.classList.remove("hidden");
-  } else {
-    adminPanel.classList.add("hidden");
-  }
+  const superLogged = Boolean(state.token) && state.role === "superadmin";
+  orderNo.disabled = !superLogged;
+  amountPaid.disabled = !superLogged;
+  btnGenerate.disabled = !superLogged;
+  qrHint.style.display = superLogged ? "none" : "block";
 }
+
 refreshUI();
 
-// ===== Pontos (mock para teste visual) =====
+// mock points
 btnAddPoint.addEventListener("click", () => {
   state.points += 1;
   localStorage.setItem("points", String(state.points));
   refreshUI();
 });
 
-// ===== Easter egg: 5 cliques na logo abre modal admin =====
+// 7 clicks to open super admin modal
 logo.addEventListener("click", () => {
   const now = Date.now();
-  // zera sequência se passou >1,2s entre cliques
-  if (now - state.lastClickAt > 1200){
-    state.logoClicks = 0;
-  }
+  if (now - state.lastClickAt > 1200) state.logoClicks = 0;
   state.lastClickAt = now;
   state.logoClicks += 1;
-
-  if (state.logoClicks >= 5){
+  if (state.logoClicks >= 7){
     state.logoClicks = 0;
-    adminModal.showModal();
+    superModal.showModal();
   }
 });
 
-// ===== Login Admin (NESTA FASE estava pré-preenchido) =====
-btnAdminLogin.addEventListener("click", (e) => {
+btnSuperLogin.addEventListener("click", async (e) => {
   e.preventDefault();
-  const u = adminUser.value.trim();
-  const p = adminPass.value.trim();
-
-  // Checagem básica local (protótipo)
-  if (u === "seomar" && p === "160590"){
-    state.isAdmin = true;
-    localStorage.setItem("isAdmin", "true");
-    adminModal.close();
+  try {
+    if (!API) return alert("API não configurada (window.DECKBAR_API_URL).");
+    const r = await fetch(API.replace(/\/$/,'') + "/auth-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: superUser.value.trim(), pass: superPass.value.trim() })
+    });
+    const data = await r.json();
+    if (!r.ok) return alert(data.error || "Falha no login");
+    if (data.role !== "superadmin") return alert("Acesso permitido apenas para Super Admin");
+    state.token = data.token;
+    state.role = data.role;
+    localStorage.setItem("super_token", state.token);
+    localStorage.setItem("super_role", state.role);
+    superModal.close();
     refreshUI();
-  } else {
-    alert("Credenciais inválidas.");
+  } catch (err) {
+    alert("Erro de rede no login");
   }
 });
 
-// ===== Logout =====
-btnLogout?.addEventListener("click", () => {
-  state.isAdmin = false;
-  localStorage.removeItem("isAdmin");
-  refreshUI();
-});
-
-// ===== Gerar QR CODE (visível sem login nesta fase) =====
-btnGenerate.addEventListener("click", () => {
+btnGenerate.addEventListener("click", async () => {
   const order = orderNo.value.trim();
   const amount = amountPaid.value.trim();
+  if (!order) return alert("orderNo é obrigatório");
+  if (!amount) return alert("Informe o valor pago");
 
-  if (!order){
-    alert("orderNo é obrigatório (estado anterior gerava esse erro no backend).");
-    return;
+  try {
+    const r = await fetch(API.replace(/\/$/,'') + "/qr-generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${state.token || ""}`
+      },
+      body: JSON.stringify({ orderNo: order, amountPaid: Number(amount) })
+    });
+    const data = await r.json();
+    if (!r.ok) return alert(`Erro: ${data.error || "falha ao gerar"}`);
+
+    qrWrap.innerHTML = "";
+    new QRCode(qrWrap, {
+      text: data.token,
+      width: 200,
+      height: 200
+    });
+  } catch (err) {
+    alert("Falha de rede ao gerar QR");
   }
-  if (!amount){
-    alert("Informe o valor pago.");
-    return;
-  }
-
-  // Nesta etapa, o QR era gerado localmente, só para teste visual
-  // payload simples; o backend viria depois
-  const payload = {
-    orderNo: order,
-    amountPaid: Number(amount),
-    ts: Date.now()
-  };
-
-  // Limpa e gera novo
-  qrWrap.innerHTML = "";
-  new QRCode(qrWrap, {
-    text: JSON.stringify(payload),
-    width: 200,
-    height: 200
-  });
 });
