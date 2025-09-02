@@ -1,400 +1,117 @@
-// ======= CONFIG =======
-const BASE_API_URL = "http://localhost:4000/api"; // ajuste para seu backend
-const ADMIN_DEFAULT = { user: "seomar", pass: "160590" };
-const FIVE_CLICK_WINDOW_MS = 3000;
-
-// ======= HELPERS =======
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
-
-function brMoney(n) {
-  const num = Number(n || 0);
-  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-function fixAmountInput(val) {
-  // aceita "25,14" ou "25.14"
-  return Number(String(val).replace(/\./g, "").replace(",", "."));
-}
-function maskCPF(v) {
-  return v.replace(/\D/g, "")
-    .replace(/(\d{3})(\d)/, "$1.$2")
-    .replace(/(\d{3})(\d)/, "$1.$2")
-    .replace(/(\d{3})(\d{1,2})$/, "$1-$2")
-    .slice(0,14);
-}
-
-// ======= STATE =======
-let state = {
-  clicks: { count: 0, timer: null },
-  adminToken: localStorage.getItem("adminToken") || null,
-  activeQR: null, // { token, expiresAt, qrDataUrl }
-  countdownId: null,
-  scanner: null
+// ===== Estado simples local (fase pré-ajustes) =====
+const state = {
+  points: Number(localStorage.getItem("points") || 0),
+  isAdmin: localStorage.getItem("isAdmin") === "true",
+  logoClicks: 0,
+  lastClickAt: 0
 };
 
-// ======= API =======
-async function api(path, options = {}) {
-  const res = await fetch(`${BASE_API_URL}${path}`, options);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || data.message || "Erro na requisição");
-  return data;
-}
+const $ = (sel) => document.querySelector(sel);
 
-// CLIENT
-async function checkCpf(cpf) {
-  return api(`/client/check-cpf`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cpf })
-  });
-}
-async function registerClient(name, cpf) {
-  return api(`/client/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, cpf })
-  });
-}
-async function getSummary(cpf) {
-  return api(`/client/summary?cpf=${encodeURIComponent(cpf)}`);
-}
-async function useQr(cpf, token) {
-  return api(`/client/use-qr`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cpf, token })
-  });
-}
+// ===== UI Elements =====
+const pointsValue = $("#points-value");
+const btnAddPoint = $("#btn-add-point");
 
-// ADMIN
-function authHeaders() {
-  return state.adminToken ? { Authorization: `Bearer ${state.adminToken}` } : {};
-}
-async function adminLogin(username, password) {
-  const data = await api(`/admin/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
-  });
-  state.adminToken = data.token;
-  localStorage.setItem("adminToken", data.token);
-  return data;
-}
-async function adminGenerate(orderNo, amountPaid) {
-  const data = await api(`/admin/qr/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ orderNo, amountPaid })
-  });
-  return data;
-}
-async function adminInvalidate(token) {
-  return api(`/admin/qr/invalidate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ token })
-  });
-}
-async function reportCustomers() {
-  return api(`/admin/report/customers`, { headers: { ...authHeaders() } });
-}
-async function reportTransactions() {
-  return api(`/admin/report/transactions`, { headers: { ...authHeaders() } });
-}
+const orderNo = $("#orderNo");
+const amountPaid = $("#amountPaid");
+const btnGenerate = $("#btn-generate");
+const qrWrap = $("#qr-result");
 
-// ======= UI ACTIONS (Cliente) =======
-function initClientUI() {
-  const elCPF = $("#cpf");
-  elCPF.addEventListener("input", (e) => e.target.value = maskCPF(e.target.value));
+const adminPanel = $("#admin-panel");
+const adminModal = $("#admin-modal");
+const btnAdminLogin = $("#btn-admin-login");
+const btnLogout = $("#btn-logout");
 
-  $("#btn-check").addEventListener("click", onCheckCpf);
-  $("#btn-register").addEventListener("click", onRegister);
+const adminUser = $("#admin-user");
+const adminPass = $("#admin-pass");
+const logo = $("#logo");
 
-  $("#btn-scan").addEventListener("click", startScan);
+// ===== Init =====
+function refreshUI(){
+  pointsValue.textContent = state.points;
 
-  // 5 cliques na logo para abrir admin
-  $("#logo").addEventListener("click", handleLogoClicks);
-
-  // se já existe cpf no input e o usuário der enter
-  elCPF.addEventListener("keydown", (e) => { if (e.key === "Enter") $("#btn-check").click(); });
-}
-
-async function onCheckCpf() {
-  const cpf = $("#cpf").value.trim();
-  const msg = $("#cpf-msg");
-  msg.textContent = "";
-  $("#register-area").classList.add("hidden");
-
-  try {
-    const r = await checkCpf(cpf);
-    if (r.exists) {
-      const sum = await getSummary(cpf);
-      renderSummary(sum);
-    } else {
-      msg.textContent = r.message || "CPF incorreto ou não cadastrado";
-      $("#register-area").classList.remove("hidden");
-    }
-  } catch (err) {
-    msg.textContent = err.message;
-  }
-}
-
-async function onRegister() {
-  const name = $("#name").value.trim();
-  const cpf = $("#cpf").value.trim();
-  const msg = $("#cpf-msg");
-  msg.textContent = "";
-
-  if (!name) { msg.textContent = "Informe seu nome"; return; }
-
-  try {
-    await registerClient(name, cpf);
-    const sum = await getSummary(cpf);
-    renderSummary(sum);
-  } catch (err) {
-    msg.textContent = err.message;
-  }
-}
-
-function renderSummary(sum) {
-  $("#card-cpf").classList.add("hidden");
-  $("#card-summary").classList.remove("hidden");
-
-  $("#hello").textContent = `Olá, ${sum.customer.name}`;
-  $("#kpi-visits").textContent = sum.visits;
-  $("#kpi-extra").textContent = Number(sum.extraPoints).toFixed(2).replace(".", ",");
-  $("#kpi-total").textContent = Number(sum.totalPoints).toFixed(2).replace(".", ",");
-
-  if (sum.milestoneImage) {
-    $("#milestone-img").src = `./${sum.milestoneImage}`;
-    $("#milestone").classList.remove("hidden");
+  if (state.isAdmin){
+    adminPanel.classList.remove("hidden");
   } else {
-    $("#milestone").classList.add("hidden");
+    adminPanel.classList.add("hidden");
   }
-
-  const ul = $("#history");
-  ul.innerHTML = "";
-  (sum.history || []).forEach(h => {
-    const li = document.createElement("li");
-    const dt = new Date(h.date);
-    li.textContent = `${dt.toLocaleString()} — Pedido ${h.orderNo}`;
-    ul.appendChild(li);
-  });
 }
+refreshUI();
 
-function startScan() {
-  const container = $("#qr-reader");
-  const btn = $("#btn-scan");
-  btn.disabled = true;
-  container.classList.remove("hidden");
+// ===== Pontos (mock para teste visual) =====
+btnAddPoint.addEventListener("click", () => {
+  state.points += 1;
+  localStorage.setItem("points", String(state.points));
+  refreshUI();
+});
 
-  // Html5QrcodeScanner(global) loaded by CDN
-  const { Html5QrcodeScanner } = window;
-  state.scanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: 250 }, false);
-
-  const cpf = $("#cpf").value.trim();
-  state.scanner.render(async (decodedText) => {
-    try {
-      const data = JSON.parse(decodedText);
-      if (!data.t) throw new Error("QR inválido");
-      await useQr(cpf, data.t);
-      const sum = await getSummary(cpf);
-      renderSummary(sum);
-      stopScan();
-    } catch (e) {
-      alert(e.message || "Não foi possível ler este QR");
-      stopScan();
-    }
-  }, () => { /* ignore errors */ });
-}
-function stopScan() {
-  if (state.scanner) {
-    state.scanner.clear().catch(()=>{});
-    state.scanner = null;
-  }
-  $("#qr-reader").classList.add("hidden");
-  $("#btn-scan").disabled = false;
-}
-
-// ======= UI ACTIONS (Admin) =======
-function handleLogoClicks() {
+// ===== Easter egg: 5 cliques na logo abre modal admin =====
+logo.addEventListener("click", () => {
   const now = Date.now();
-  clearTimeout(state.clicks.timer);
-  state.clicks.count += 1;
-  state.clicks.timer = setTimeout(() => (state.clicks.count = 0), FIVE_CLICK_WINDOW_MS);
-  if (state.clicks.count >= 5) {
-    state.clicks.count = 0;
-    openAdmin();
+  // zera sequência se passou >1,2s entre cliques
+  if (now - state.lastClickAt > 1200){
+    state.logoClicks = 0;
   }
-}
+  state.lastClickAt = now;
+  state.logoClicks += 1;
 
-function openAdmin() {
-  const dlg = $("#admin-dialog");
-  dlg.showModal();
-
-  // estado inicial
-  $("#admin-login").classList.toggle("hidden", !!state.adminToken);
-  $("#admin-app").classList.toggle("hidden", !state.adminToken);
-
-  // listeners
-  $("#btn-admin-login").onclick = onAdminLogin;
-  $("#btn-logout").onclick = onAdminLogout;
-
-  $("#tab-qr").onclick = () => switchTab("qr");
-  $("#tab-reports").onclick = () => switchTab("reports");
-
-  $("#btn-generate").onclick = onGenerateQR;
-  $("#btn-invalidate").onclick = onInvalidateQR;
-  $("#btn-refresh").onclick = onRefreshReports;
-
-  // preencher usuário padrão como dica
-  $("#admin-user").value = ADMIN_DEFAULT.user;
-  $("#admin-pass").value = ADMIN_DEFAULT.pass;
-}
-function closeAdmin() {
-  const dlg = $("#admin-dialog");
-  dlg.close();
-  clearCountdown();
-}
-window.ui = { closeAdmin };
-
-async function onAdminLogin() {
-  const u = $("#admin-user").value.trim();
-  const p = $("#admin-pass").value.trim();
-  const msg = $("#admin-msg"); msg.textContent = "";
-  try {
-    await adminLogin(u, p);
-    $("#admin-login").classList.add("hidden");
-    $("#admin-app").classList.remove("hidden");
-  } catch (e) {
-    msg.textContent = e.message;
+  if (state.logoClicks >= 5){
+    state.logoClicks = 0;
+    adminModal.showModal();
   }
-}
+});
 
-function onAdminLogout() {
-  state.adminToken = null;
-  localStorage.removeItem("adminToken");
-  $("#admin-app").classList.add("hidden");
-  $("#admin-login").classList.remove("hidden");
-  clearQR();
-}
+// ===== Login Admin (NESTA FASE estava pré-preenchido) =====
+btnAdminLogin.addEventListener("click", (e) => {
+  e.preventDefault();
+  const u = adminUser.value.trim();
+  const p = adminPass.value.trim();
 
-function switchTab(name) {
-  $("#tab-qr").classList.toggle("active", name === "qr");
-  $("#tab-reports").classList.toggle("active", name === "reports");
-  $("#pane-qr").classList.toggle("hidden", name !== "qr");
-  $("#pane-reports").classList.toggle("hidden", name !== "reports");
-  if (name === "reports") onRefreshReports();
-}
-
-async function onGenerateQR() {
-  const orderNo = $("#order-no").value.trim();
-  const amountPaid = fixAmountInput($("#amount-paid").value);
-  const msg = $("#qr-msg"); msg.textContent = "";
-  if (!orderNo) { msg.textContent = "Informe o nº do pedido"; return; }
-
-  try {
-    const r = await adminGenerate(orderNo, isNaN(amountPaid) ? 0 : amountPaid);
-    state.activeQR = r;
-    renderQR(r);
-  } catch (e) {
-    msg.textContent = e.message;
+  // Checagem básica local (protótipo)
+  if (u === "seomar" && p === "160590"){
+    state.isAdmin = true;
+    localStorage.setItem("isAdmin", "true");
+    adminModal.close();
+    refreshUI();
+  } else {
+    alert("Credenciais inválidas.");
   }
-}
-async function onInvalidateQR() {
-  const msg = $("#qr-msg"); msg.textContent = "";
-  if (!state.activeQR?.token) { msg.textContent = "Não há QR ativo"; return; }
-  try {
-    await adminInvalidate(state.activeQR.token);
-    clearQR();
-    msg.textContent = "QR invalidado.";
-  } catch (e) {
-    msg.textContent = e.message;
+});
+
+// ===== Logout =====
+btnLogout?.addEventListener("click", () => {
+  state.isAdmin = false;
+  localStorage.removeItem("isAdmin");
+  refreshUI();
+});
+
+// ===== Gerar QR CODE (visível sem login nesta fase) =====
+btnGenerate.addEventListener("click", () => {
+  const order = orderNo.value.trim();
+  const amount = amountPaid.value.trim();
+
+  if (!order){
+    alert("orderNo é obrigatório (estado anterior gerava esse erro no backend).");
+    return;
   }
-}
-
-function renderQR({ token, qrDataUrl, expiresAt }) {
-  $("#qr-token").textContent = token;
-  $("#qr-img").src = qrDataUrl;
-  $("#qr-output").classList.remove("hidden");
-
-  clearCountdown();
-  const end = new Date(expiresAt).getTime();
-  state.countdownId = setInterval(() => {
-    const left = Math.max(0, Math.floor((end - Date.now()) / 1000));
-    $("#qr-countdown").textContent = left;
-    if (left <= 0) clearCountdown();
-  }, 500);
-}
-function clearQR() {
-  clearCountdown();
-  state.activeQR = null;
-  $("#qr-output").classList.add("hidden");
-  $("#qr-token").textContent = "";
-  $("#qr-img").src = "";
-  $("#qr-countdown").textContent = "–";
-}
-function clearCountdown() {
-  if (state.countdownId) { clearInterval(state.countdownId); state.countdownId = null; }
-}
-
-async function onRefreshReports() {
-  // Clientes
-  const tbC = $("#tbl-customers");
-  tbC.innerHTML = "<tr><td colspan='6'>Carregando...</td></tr>";
-  try {
-    const rows = await reportCustomers();
-    tbC.innerHTML = "";
-    rows.forEach(r => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(r.name)}</td>
-        <td>${escapeHtml(r.cpf)}</td>
-        <td>${r.visits}</td>
-        <td>${Number(r.extraPoints).toFixed(2).replace(".", ",")}</td>
-        <td><strong>${Number(r.totalPoints).toFixed(2).replace(".", ",")}</strong></td>
-        <td><strong>${brMoney(r.totalSpent)}</strong></td>
-      `;
-      tbC.appendChild(tr);
-    });
-    if (!rows.length) tbC.innerHTML = "<tr><td colspan='6'>Sem dados</td></tr>";
-  } catch (e) {
-    tbC.innerHTML = `<tr><td colspan='6' style="color:#b94a48">${escapeHtml(e.message)}</td></tr>`;
+  if (!amount){
+    alert("Informe o valor pago.");
+    return;
   }
 
-  // Transações
-  const tbT = $("#tbl-transactions");
-  tbT.innerHTML = "<tr><td colspan='7'>Carregando...</td></tr>";
-  try {
-    const rows = await reportTransactions();
-    tbT.innerHTML = "";
-    rows.forEach(t => {
-      const tr = document.createElement("tr");
-      const dt = new Date(t.visitedAt);
-      tr.innerHTML = `
-        <td>${dt.toLocaleString()}</td>
-        <td>${escapeHtml(t.name)}</td>
-        <td>${escapeHtml(t.cpf)}</td>
-        <td>${escapeHtml(t.orderNo)}</td>
-        <td>${brMoney(t.amountPaid)}</td>
-        <td>${t.visitPoints}</td>
-        <td>${t.extraPoints}</td>
-      `;
-      tbT.appendChild(tr);
-    });
-    if (!rows.length) tbT.innerHTML = "<tr><td colspan='7'>Sem dados</td></tr>";
-  } catch (e) {
-    tbT.innerHTML = `<tr><td colspan='7' style="color:#b94a48">${escapeHtml(e.message)}</td></tr>`;
-  }
-}
+  // Nesta etapa, o QR era gerado localmente, só para teste visual
+  // payload simples; o backend viria depois
+  const payload = {
+    orderNo: order,
+    amountPaid: Number(amount),
+    ts: Date.now()
+  };
 
-function escapeHtml(s="") {
-  return String(s)
-    .replaceAll("&","&amp;").replaceAll("<","&lt;")
-    .replaceAll(">","&gt;").replaceAll("\"","&quot;").replaceAll("'","&#039;");
-}
-
-// ======= BOOT =======
-window.addEventListener("DOMContentLoaded", () => {
-  initClientUI();
+  // Limpa e gera novo
+  qrWrap.innerHTML = "";
+  new QRCode(qrWrap, {
+    text: JSON.stringify(payload),
+    width: 200,
+    height: 200
+  });
 });
